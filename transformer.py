@@ -50,10 +50,40 @@ class PositionalEncoding(nn.Module):
         return x
 
 def scaled_dot_product_attention(q, k, v, mask=None):
-    d_k = q.size(-1)  # 获取键的维度
-    scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(d_k)  # 计算注意力分数
+    """
+    参数：
+    - q: 查询张量 (batch_size, num_heads, seq_len, d_k)
+    - k: 键张量     (batch_size, num_heads, seq_len, d_k)
+    - v: 值张量     (batch_size, num_heads, seq_len, d_k)
+    - mask: 掩码张量，可选。用于屏蔽某些位置（比如 padding 或未来信息）
+
+    返回：
+    - output: 注意力加权的值结果 (batch_size, num_heads, seq_len, d_k)
+    - attn: 注意力权重分布 (batch_size, num_heads, seq_len, seq_len)
+    """
+
+    # 获取最后一维的大小，也就是每个头中 q/k/v 的特征维度 d_k
+    d_k = q.size(-1)
+
+    # Step 1: 点积计算注意力得分
+    # Q * K^T，结果维度为 (batch_size, num_heads, seq_len, seq_len)
+    # 表示第 i 个查询与第 j 个键的相似度
+    scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(d_k)
+
+    # Step 2: 掩码处理（用于屏蔽非法位置或防止信息泄露）
     if mask is not None:
+        # 掩码为0的位置设为 -inf，softmax后为0（完全屏蔽）
         scores = scores.masked_fill(mask == 0, float('-inf'))
-    attn = torch.softmax(scores, dim=-1)  # 应用softmax
-    output = torch.matmul(attn, v)  # 计算加权和    
+
+    # Step 3: 对最后一个维度做 softmax，得到注意力权重
+    # 每一行代表某个 token 对所有 key 的注意力分布（加权系数）
+    attn = torch.softmax(scores, dim=-1)
+
+    # Step 4: 将注意力权重乘以值向量 V，得到最终输出
+    # 类似于“从所有V中加权提取信息”
+    output = torch.matmul(attn, v)
+
+    return output, attn
+
+
 
